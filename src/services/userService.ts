@@ -229,7 +229,11 @@ export async function updateUserProfile(
   try {
     const userRef = doc(db, 'users', userId);
     const displayName = `${(updates.firstName || '').trim()} ${(updates.lastName || '').trim()}`.trim();
-    const payload: Record<string, any> = { ...updates };
+    const payload: Record<string, any> = {};
+    if (updates.firstName !== undefined) payload.firstName = updates.firstName;
+    if (updates.lastName !== undefined) payload.lastName = updates.lastName;
+    if (updates.bio !== undefined) payload.bio = updates.bio;
+    if (updates.avatarUrl !== undefined) payload.avatarUrl = updates.avatarUrl;
     if (displayName) payload.displayName = displayName;
 
     await updateDoc(userRef, payload);

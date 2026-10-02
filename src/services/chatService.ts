@@ -8,6 +8,7 @@ import {
   runTransaction,
   setDoc,
   updateDoc,
+  writeBatch,
 } from 'firebase/firestore';
 import { db, handleFirestoreError } from '../firebase';
 import { Conversation, Message, OperationType, PublicUser } from '../types';
@@ -135,6 +136,23 @@ export function listenToMessages(
 }
 
 /**
+ * Recursively remove undefined fields so Firestore doesn't reject writes
+ */
+function cleanFirestoreData<T extends Record<string, any>>(obj: T): T {
+  const result: Record<string, any> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (value !== undefined) {
+      if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+        result[key] = cleanFirestoreData(value);
+      } else {
+        result[key] = value;
+      }
+    }
+  }
+  return result as T;
+}
+
+/**
  * Send a message with text or media
  */
 export async function sendMessage(params: {
@@ -153,7 +171,8 @@ export async function sendMessage(params: {
   const now = new Date().toISOString();
   const type = params.type || 'text';
 
-  const message: Message = {
+  // Build clean message record without any undefined fields
+  const messagePayload: Record<string, any> = {
     id: msgId,
     conversationId: params.conversationId,
     senderId: params.sender.userId,
@@ -162,24 +181,33 @@ export async function sendMessage(params: {
     recipientId: params.recipientId,
     text: params.text || '',
     type,
-    mediaUrl: params.mediaUrl,
-    mediaName: params.mediaName,
-    mediaSize: params.mediaSize,
-    mediaType: params.mediaType,
     timestamp: now,
     status: 'sent',
     reactions: {},
-    replyTo: params.replyTo,
   };
 
+  if (params.mediaUrl) messagePayload.mediaUrl = params.mediaUrl;
+  if (params.mediaName) messagePayload.mediaName = params.mediaName;
+  if (params.mediaSize) messagePayload.mediaSize = params.mediaSize;
+  if (params.mediaType) messagePayload.mediaType = params.mediaType;
+  if (params.replyTo) {
+    messagePayload.replyTo = cleanFirestoreData({
+      id: params.replyTo.id,
+      text: params.replyTo.text || '',
+      senderName: params.replyTo.senderName || '',
+      type: params.replyTo.type || 'text',
+    });
+  }
+
+  const message = cleanFirestoreData(messagePayload) as Message;
   const convRef = doc(db, 'conversations', params.conversationId);
   const msgRef = doc(db, 'conversations', params.conversationId, 'messages', msgId);
 
   try {
     await runTransaction(db, async (tx) => {
-      tx.set(msgRef, message);
-
+      // 1. ALL READS MUST EXECUTE BEFORE WRITES
       const convSnap = await tx.get(convRef);
+
       const currentUnreads = convSnap.exists() ? (convSnap.data().unreadCounts || {}) : {};
       const nextUnreads = {
         ...currentUnreads,
@@ -195,19 +223,36 @@ export async function sendMessage(params: {
         else if (type === 'file') previewText = `📁 ${params.mediaName || 'File'}`;
       }
 
-      tx.update(convRef, {
-        updatedAt: now,
-        lastMessage: {
-          id: msgId,
-          text: previewText,
-          senderId: params.sender.userId,
-          senderName: params.sender.displayName,
-          timestamp: now,
-          type,
-          mediaName: params.mediaName,
-        },
-        unreadCounts: nextUnreads,
-      });
+      const lastMessagePayload: Record<string, any> = {
+        id: msgId,
+        text: previewText,
+        senderId: params.sender.userId,
+        senderName: params.sender.displayName,
+        timestamp: now,
+        type,
+      };
+      if (params.mediaName) {
+        lastMessagePayload.mediaName = params.mediaName;
+      }
+
+      // 2. ALL WRITES AFTER READS
+      tx.set(msgRef, message);
+
+      if (convSnap.exists()) {
+        tx.update(convRef, {
+          updatedAt: now,
+          lastMessage: lastMessagePayload,
+          unreadCounts: nextUnreads,
+        });
+      } else {
+        tx.set(convRef, {
+          id: params.conversationId,
+          participantIds: [params.sender.userId, params.recipientId],
+          updatedAt: now,
+          lastMessage: lastMessagePayload,
+          unreadCounts: nextUnreads,
+        });
+      }
     });
 
     return message;
@@ -277,3 +322,35 @@ export async function markConversationAsRead(
     console.warn('Could not mark conversation as read', err);
   }
 }
+
+/**
+ * Mark messages addressed to user in conversation as read and reset unread counts
+ */
+export async function markMessagesAsRead(
+  conversationId: string,
+  userId: string,
+  messages: Message[]
+): Promise<void> {
+  // 1. Reset unread count on conversation
+  markConversationAsRead(conversationId, userId);
+
+  // 2. Mark incoming messages as read
+  const unreadMessages = messages.filter(
+    (m) => m.recipientId === userId && m.status !== 'read'
+  );
+
+  if (unreadMessages.length === 0) return;
+
+  const batch = writeBatch(db);
+  unreadMessages.forEach((m) => {
+    const msgRef = doc(db, 'conversations', conversationId, 'messages', m.id);
+    batch.update(msgRef, { status: 'read' });
+  });
+
+  try {
+    await batch.commit();
+  } catch (err) {
+    console.warn('Could not batch update messages as read', err);
+  }
+}
+

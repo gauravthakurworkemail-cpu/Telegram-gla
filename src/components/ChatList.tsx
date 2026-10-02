@@ -334,7 +334,14 @@ export const ChatList: React.FC<ChatListProps> = ({
                       {lastMsg ? (
                         <>
                           {lastMsg.senderId === currentUser.userId && (
-                            <CheckCheck className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                            otherUserId && conv.unreadCounts && (conv.unreadCounts[otherUserId] === 0 || !conv.unreadCounts[otherUserId]) ? (
+                              <span className="flex items-center gap-0.5 text-sky-400 font-semibold text-[10px] shrink-0">
+                                <CheckCheck className="w-3 h-3" />
+                                <span>Seen</span>
+                              </span>
+                            ) : (
+                              <Check className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                            )
                           )}
                           <span className="truncate">
                             {lastMsg.text || (

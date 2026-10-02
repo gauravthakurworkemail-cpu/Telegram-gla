@@ -26,6 +26,7 @@ import { compressImage, fileToBase64, formatFileSize, VoiceRecorder } from '../u
 import {
   listenToMessages,
   markConversationAsRead,
+  markMessagesAsRead,
   sendMessage,
   toggleMessageReaction,
 } from '../services/chatService';
@@ -95,7 +96,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
     markConversationAsRead(conversation.id, currentUser.userId);
     const unsubscribe = listenToMessages(conversation.id, (newMsgs) => {
       setMessages(newMsgs);
-      markConversationAsRead(conversation.id, currentUser.userId);
+      markMessagesAsRead(conversation.id, currentUser.userId, newMsgs);
     });
 
     return () => {
@@ -441,13 +442,26 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                 <div className="relative max-w-[85%] sm:max-w-md">
                   {msg.type === 'sticker' ? (
                     // Sticker format (no bubble background)
-                    <div className="py-1 px-2 text-2xl font-bold bg-transparent select-none">
+                    <div className="py-1 px-2 text-2xl font-bold bg-transparent select-none flex items-center gap-2">
                       <span className="inline-block hover:scale-110 transition duration-150">
                         {msg.text}
                       </span>
-                      <span className="text-[10px] text-gray-500 ml-2 font-normal">
+                      <span className="text-[10px] text-gray-500 font-normal">
                         {formatMsgTime(msg.timestamp)}
                       </span>
+                      {isMe && (
+                        msg.status === 'read' ? (
+                          <span className="flex items-center gap-1 text-sky-400 font-bold text-[10px] bg-sky-950/60 border border-sky-500/30 px-1.5 py-0.5 rounded">
+                            <CheckCheck className="w-3.5 h-3.5" />
+                            <span>Seen</span>
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-0.5 text-gray-400 text-[10px]">
+                            <Check className="w-3.5 h-3.5" />
+                            <span>Sent</span>
+                          </span>
+                        )
+                      )}
                     </div>
                   ) : (
                     <div
@@ -531,10 +545,20 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                       )}
 
                       {/* Timestamp & Read Receipt */}
-                      <div className="flex items-center justify-end gap-1 mt-1 text-[10px] text-sky-200/70 font-mono select-none">
-                        <span>{formatMsgTime(msg.timestamp)}</span>
+                      <div className="flex items-center justify-end gap-1.5 mt-1 text-[10px] font-mono select-none">
+                        <span className="text-sky-200/70">{formatMsgTime(msg.timestamp)}</span>
                         {isMe && (
-                          <CheckCheck className="w-3.5 h-3.5 text-sky-300 inline" />
+                          msg.status === 'read' ? (
+                            <span className="flex items-center gap-1 text-sky-300 font-bold bg-sky-950/60 border border-sky-400/30 px-1.5 py-0.5 rounded text-[10px] tracking-wide" title="Seen by recipient">
+                              <CheckCheck className="w-3.5 h-3.5 text-sky-300 inline" />
+                              <span className="font-sans">Seen</span>
+                            </span>
+                          ) : (
+                            <span className="flex items-center gap-1 text-gray-300/80 bg-black/20 px-1.5 py-0.5 rounded text-[10px]" title="Sent">
+                              <Check className="w-3.5 h-3.5 text-gray-300 inline" />
+                              <span className="font-sans">Sent</span>
+                            </span>
+                          )
                         )}
                       </div>
                     </div>
