@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Send,
   MessageSquare,
@@ -12,8 +12,10 @@ import { ChatList } from './components/ChatList';
 import { ChatArea } from './components/ChatArea';
 import { UserProfileModal } from './components/UserProfileModal';
 import { MediaViewerModal } from './components/MediaViewerModal';
+import { NotificationToast, UnreadNotification } from './components/NotificationToast';
 import { Conversation, PublicUser, UserProfile } from './types';
 import { clearSessionUser, getSessionUser, saveSessionUser } from './utils/crypto';
+import { playNotificationSound } from './utils/media';
 import {
   getOrCreateConversation,
   listenToConversations,
@@ -24,6 +26,12 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+
+  // Notifications state
+  const [unreadToast, setUnreadToast] = useState<UnreadNotification | null>(null);
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  const initialLoadRef = useRef(true);
+  const lastKnownMessagesRef = useRef<Record<string, string>>({}); // convId -> lastMsgId
 
   // Modals state
   const [inspectedUser, setInspectedUser] = useState<PublicUser | null>(null);
@@ -49,7 +57,16 @@ export default function App() {
     }
   }, []);
 
-  // Listen to conversations for current user
+  // Request desktop notification permission on first user login
+  useEffect(() => {
+    if (currentUser && typeof window !== 'undefined' && 'Notification' in window) {
+      if (Notification.permission === 'default') {
+        Notification.requestPermission().catch(() => {});
+      }
+    }
+  }, [currentUser]);
+
+  // Listen to conversations for current user and trigger notifications for unseen messages
   useEffect(() => {
     if (!currentUser) {
       setConversations([]);
@@ -58,6 +75,77 @@ export default function App() {
 
     const unsubscribe = listenToConversations(currentUser.userId, (convs) => {
       setConversations(convs);
+
+      // Total unseen count
+      const totalUnseen = convs.reduce((sum, c) => {
+        return sum + (c.unreadCounts?.[currentUser.userId] || 0);
+      }, 0);
+
+      document.title = totalUnseen > 0
+        ? `(${totalUnseen}) TeleChat - Real-Time Messenger`
+        : 'TeleChat - Real-Time Messenger';
+
+      // Check for incoming unseen messages
+      if (initialLoadRef.current) {
+        initialLoadRef.current = false;
+        const initialMap: Record<string, string> = {};
+        convs.forEach((c) => {
+          if (c.lastMessage?.id) {
+            initialMap[c.id] = c.lastMessage.id;
+          }
+        });
+        lastKnownMessagesRef.current = initialMap;
+        return;
+      }
+
+      // Check if any conversation received a new incoming message
+      for (const conv of convs) {
+        const lastMsg = conv.lastMessage;
+        if (!lastMsg) continue;
+
+        const prevMsgId = lastKnownMessagesRef.current[conv.id];
+        const isNewMsg = prevMsgId !== lastMsg.id;
+
+        if (isNewMsg) {
+          lastKnownMessagesRef.current[conv.id] = lastMsg.id;
+
+          // Only notify if sent by the other user and not currently inside this active chat (or page is hidden)
+          if (lastMsg.senderId !== currentUser.userId) {
+            const isViewingThisChat = activeConversationId === conv.id && document.visibilityState === 'visible';
+
+            if (!isViewingThisChat) {
+              if (soundEnabled) {
+                playNotificationSound();
+              }
+
+              // Show in-app banner toast
+              const otherUserId = conv.participantIds.find((id) => id !== currentUser.userId);
+              const otherUser = otherUserId ? conv.participants[otherUserId] : null;
+
+              setUnreadToast({
+                id: lastMsg.id,
+                conversationId: conv.id,
+                senderName: lastMsg.senderName,
+                senderUsername: otherUser?.username || 'user',
+                text: lastMsg.text || '',
+                type: lastMsg.type,
+              });
+
+              // Native desktop browser notification
+              if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+                try {
+                  new Notification(`TeleChat: ${lastMsg.senderName}`, {
+                    body: lastMsg.text || 'New message received',
+                    icon: '/favicon.ico',
+                  });
+                } catch {
+                  // Ignore desktop notification errors
+                }
+              }
+            }
+          }
+        }
+      }
     });
 
     // Window presence handlers
@@ -72,7 +160,7 @@ export default function App() {
       unsubscribe();
       window.removeEventListener('beforeunload', handleBeforeUnload);
     };
-  }, [currentUser]);
+  }, [currentUser, activeConversationId, soundEnabled]);
 
   // Handle successful login or registration
   const handleAuthSuccess = (user: UserProfile) => {
@@ -106,8 +194,18 @@ export default function App() {
   const activeConversation = conversations.find((c) => c.id === activeConversationId);
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-[#0e1621] text-white font-sans antialiased">
+    <div className="flex h-screen w-screen overflow-hidden bg-[#0e1621] text-white font-sans antialiased relative">
       
+      {/* Real-time Unseen Message Floating Notification Toast */}
+      <NotificationToast
+        notification={unreadToast}
+        onOpen={(convId) => {
+          setActiveConversationId(convId);
+          setUnreadToast(null);
+        }}
+        onClose={() => setUnreadToast(null)}
+      />
+
       {/* Auth Modal if user not logged in */}
       {!currentUser && <AuthModal onSuccess={handleAuthSuccess} />}
 
@@ -125,6 +223,8 @@ export default function App() {
               currentUser={currentUser}
               conversations={conversations}
               activeConversationId={activeConversationId}
+              soundEnabled={soundEnabled}
+              onToggleSound={() => setSoundEnabled(!soundEnabled)}
               onSelectConversation={(id) => setActiveConversationId(id)}
               onSelectUserForChat={handleStartChatWithUser}
               onViewUserProfile={(user) => setInspectedUser(user)}

@@ -1,6 +1,43 @@
 /**
- * Media compression and voice recording utilities
+ * Media compression, voice recording and audio chime utilities
  */
+
+/**
+ * Plays a soft, pleasant Telegram-style notification chime using Web Audio API synthesis
+ */
+export function playNotificationSound(): void {
+  try {
+    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    const osc1 = ctx.createOscillator();
+    const osc2 = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc1.type = 'sine';
+    osc2.type = 'sine';
+
+    osc1.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
+    osc1.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.12); // A5
+
+    osc2.frequency.setValueAtTime(880, ctx.currentTime); // A5
+    osc2.frequency.exponentialRampToValueAtTime(1318.51, ctx.currentTime + 0.15); // E6
+
+    gain.gain.setValueAtTime(0.18, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+
+    osc1.connect(gain);
+    osc2.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc1.start();
+    osc2.start();
+    osc1.stop(ctx.currentTime + 0.35);
+    osc2.stop(ctx.currentTime + 0.35);
+  } catch (e) {
+    // Audio playback might be restricted if no user gesture yet
+  }
+}
 
 export function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;

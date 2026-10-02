@@ -11,7 +11,11 @@ import {
   Sparkles,
   Camera,
   Mic,
-  FileText
+  FileText,
+  Volume2,
+  VolumeX,
+  Bell,
+  BellRing
 } from 'lucide-react';
 import { Conversation, PublicUser } from '../types';
 import { getAvatarGradient, getInitials } from '../utils/crypto';
@@ -21,6 +25,8 @@ interface ChatListProps {
   currentUser: { userId: string; username: string; firstName: string; lastName: string; displayName: string; avatarUrl?: string };
   conversations: Conversation[];
   activeConversationId: string | null;
+  soundEnabled: boolean;
+  onToggleSound: () => void;
   onSelectConversation: (conversationId: string) => void;
   onSelectUserForChat: (user: PublicUser) => void;
   onViewUserProfile: (user: PublicUser) => void;
@@ -31,6 +37,8 @@ export const ChatList: React.FC<ChatListProps> = ({
   currentUser,
   conversations,
   activeConversationId,
+  soundEnabled,
+  onToggleSound,
   onSelectConversation,
   onSelectUserForChat,
   onViewUserProfile,
@@ -40,6 +48,22 @@ export const ChatList: React.FC<ChatListProps> = ({
   const [searchResults, setSearchResults] = useState<PublicUser[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [filterMode, setFilterMode] = useState<'all' | 'unread'>('all');
+
+  // Total unseen count
+  const totalUnseen = conversations.reduce((sum, conv) => {
+    return sum + (conv.unreadCounts?.[currentUser.userId] || 0);
+  }, 0);
+
+  // Chats with unread messages
+  const unreadChats = conversations.filter(
+    (c) => (c.unreadCounts?.[currentUser.userId] || 0) > 0
+  );
+  const unreadChatsCount = unreadChats.length;
+
+  // Filtered list to display
+  const displayedConversations =
+    filterMode === 'unread' ? unreadChats : conversations;
 
   // Debounced search
   useEffect(() => {
@@ -144,25 +168,46 @@ export const ChatList: React.FC<ChatListProps> = ({
           <div>
             <h1 className="font-bold text-base leading-tight tracking-tight text-white flex items-center gap-1.5">
               <span>TeleChat</span>
-              <span className="text-[10px] uppercase tracking-wider bg-sky-500/20 text-[#24A1DE] px-1.5 py-0.5 rounded font-medium">
-                Live
-              </span>
+              {totalUnseen > 0 ? (
+                <span className="text-[10px] font-bold bg-rose-500 text-white px-2 py-0.5 rounded-full animate-pulse shadow-sm shadow-rose-600/40">
+                  {totalUnseen} unseen
+                </span>
+              ) : (
+                <span className="text-[10px] uppercase tracking-wider bg-sky-500/20 text-[#24A1DE] px-1.5 py-0.5 rounded font-medium">
+                  Live
+                </span>
+              )}
             </h1>
             <p className="text-[11px] text-gray-400 font-mono">@{currentUser.username}</p>
           </div>
         </div>
 
-        <button
-          onClick={onLogout}
-          className="p-2 rounded-lg text-gray-400 hover:text-rose-400 hover:bg-[#232e3c] transition"
-          title="Sign out"
-        >
-          <LogOut className="w-4 h-4" />
-        </button>
+        <div className="flex items-center gap-1">
+          {/* Audio Chime Notification Toggle */}
+          <button
+            onClick={onToggleSound}
+            className={`p-2 rounded-lg transition ${
+              soundEnabled
+                ? 'text-[#24A1DE] hover:bg-[#202b36]'
+                : 'text-gray-500 hover:text-gray-300 hover:bg-[#202b36]'
+            }`}
+            title={soundEnabled ? 'Notification sound enabled' : 'Notification sound muted'}
+          >
+            {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+          </button>
+
+          <button
+            onClick={onLogout}
+            className="p-2 rounded-lg text-gray-400 hover:text-rose-400 hover:bg-[#232e3c] transition"
+            title="Sign out"
+          >
+            <LogOut className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
       {/* Telegram Search Bar */}
-      <div className="p-3">
+      <div className="p-3 pb-2">
         <div className="relative">
           <Search className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
           <input
@@ -182,6 +227,63 @@ export const ChatList: React.FC<ChatListProps> = ({
           )}
         </div>
       </div>
+
+      {/* Inbox Tabs & Unread Counter Filter */}
+      {!searchQuery.trim() && (
+        <div className="px-3 pb-2 border-b border-[#232e3c]/60">
+          <div className="flex items-center gap-1.5 p-1 bg-[#0e1621] rounded-xl border border-[#232e3c]">
+            <button
+              onClick={() => setFilterMode('all')}
+              className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-semibold transition flex items-center justify-center gap-1.5 ${
+                filterMode === 'all'
+                  ? 'bg-[#24A1DE] text-white shadow'
+                  : 'text-gray-400 hover:text-gray-200'
+              }`}
+            >
+              <span>All Chats</span>
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${filterMode === 'all' ? 'bg-white/20' : 'bg-gray-800 text-gray-300'}`}>
+                {conversations.length}
+              </span>
+            </button>
+
+            <button
+              onClick={() => setFilterMode('unread')}
+              className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-semibold transition flex items-center justify-center gap-1.5 ${
+                filterMode === 'unread'
+                  ? 'bg-[#24A1DE] text-white shadow'
+                  : 'text-gray-400 hover:text-gray-200'
+              }`}
+            >
+              <span>Unread Inbox</span>
+              {totalUnseen > 0 ? (
+                <span className="text-[10px] font-extrabold px-1.5 py-0.2 rounded-full bg-rose-500 text-white animate-pulse">
+                  {totalUnseen}
+                </span>
+              ) : (
+                <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${filterMode === 'unread' ? 'bg-white/20' : 'bg-gray-800 text-gray-400'}`}>
+                  0
+                </span>
+              )}
+            </button>
+          </div>
+
+          {/* Unread Status Banner */}
+          {totalUnseen > 0 && filterMode === 'all' && (
+            <div
+              onClick={() => setFilterMode('unread')}
+              className="mt-2 py-1.5 px-3 bg-gradient-to-r from-sky-950/80 to-[#1e2e40] border border-sky-500/30 rounded-xl flex items-center justify-between text-[11px] text-sky-200 cursor-pointer hover:border-sky-400 transition"
+            >
+              <span className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
+                <span><b>{totalUnseen}</b> unread message{totalUnseen > 1 ? 's' : ''} in inbox</span>
+              </span>
+              <span className="text-[10px] text-sky-400 font-semibold underline">
+                View Unread &rarr;
+              </span>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Main Content: Search Results OR Conversation List */}
       <div className="flex-1 overflow-y-auto divide-y divide-[#232e3c]/40 scrollbar-thin">
@@ -268,12 +370,29 @@ export const ChatList: React.FC<ChatListProps> = ({
               Search for any user using their <b>@username</b> handle above to view their profile and start chatting!
             </p>
           </div>
+        ) : filterMode === 'unread' && displayedConversations.length === 0 ? (
+          <div className="p-8 text-center text-gray-400 flex flex-col items-center justify-center h-full">
+            <div className="w-16 h-16 rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center mb-3 text-emerald-400">
+              <CheckCheck className="w-8 h-8" />
+            </div>
+            <h3 className="font-semibold text-white text-sm">Inbox All Caught Up!</h3>
+            <p className="text-xs text-gray-400 mt-1 max-w-[220px]">
+              You have read all messages. There are no unread messages in your inbox.
+            </p>
+            <button
+              onClick={() => setFilterMode('all')}
+              className="mt-3 px-3 py-1.5 rounded-lg bg-[#24A1DE] text-white text-xs font-semibold"
+            >
+              Show All Chats
+            </button>
+          </div>
         ) : (
-          conversations.map((conv) => {
+          displayedConversations.map((conv) => {
             const otherUserId = conv.participantIds.find((id) => id !== currentUser.userId);
             const otherUser = otherUserId ? conv.participants[otherUserId] : null;
             const isActive = conv.id === activeConversationId;
             const unreadCount = conv.unreadCounts ? conv.unreadCounts[currentUser.userId] || 0 : 0;
+            const hasUnread = unreadCount > 0;
             const lastMsg = conv.lastMessage;
 
             if (!otherUser) return null;
@@ -285,6 +404,8 @@ export const ChatList: React.FC<ChatListProps> = ({
                 className={`p-3 flex items-center gap-3 cursor-pointer transition relative ${
                   isActive
                     ? 'bg-[#2b5278] text-white'
+                    : hasUnread
+                    ? 'bg-[#1a293b]/70 hover:bg-[#203248] text-gray-100 border-l-4 border-[#24A1DE]'
                     : 'hover:bg-[#202b36] text-gray-200'
                 }`}
               >
@@ -316,15 +437,20 @@ export const ChatList: React.FC<ChatListProps> = ({
                   {otherUser.status === 'online' && (
                     <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-emerald-500 border-2 border-[#17212b]" />
                   )}
+                  {hasUnread && (
+                    <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-rose-500 border-2 border-[#17212b] flex items-center justify-center text-[9px] font-extrabold text-white shadow">
+                      {unreadCount > 9 ? '9+' : unreadCount}
+                    </span>
+                  )}
                 </div>
 
                 {/* Details */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between mb-0.5">
-                    <p className="text-xs font-semibold truncate text-white">
+                    <p className={`text-xs truncate ${hasUnread ? 'font-bold text-white' : 'font-semibold text-gray-200'}`}>
                       {otherUser.displayName}
                     </p>
-                    <span className={`text-[10px] shrink-0 ${isActive ? 'text-sky-200' : 'text-gray-400'}`}>
+                    <span className={`text-[10px] shrink-0 ${hasUnread ? 'text-sky-300 font-bold' : isActive ? 'text-sky-200' : 'text-gray-400'}`}>
                       {formatTime(lastMsg?.timestamp || conv.updatedAt)}
                     </span>
                   </div>
@@ -343,7 +469,7 @@ export const ChatList: React.FC<ChatListProps> = ({
                               <Check className="w-3.5 h-3.5 text-gray-400 shrink-0" />
                             )
                           )}
-                          <span className="truncate">
+                          <span className={`truncate ${hasUnread ? 'text-white font-medium' : 'text-gray-400'}`}>
                             {lastMsg.text || (
                               lastMsg.type === 'image' ? '📷 Photo' :
                               lastMsg.type === 'voice' ? '🎤 Voice note' :
@@ -356,8 +482,9 @@ export const ChatList: React.FC<ChatListProps> = ({
                       )}
                     </div>
 
-                    {unreadCount > 0 && (
-                      <span className="ml-2 shrink-0 px-1.5 py-0.5 min-w-[18px] text-center text-[10px] font-bold rounded-full bg-[#24A1DE] text-white">
+                    {/* Prominent Unread Badge */}
+                    {hasUnread && (
+                      <span className="ml-2 shrink-0 px-2 py-0.5 min-w-[20px] text-center text-[10px] font-extrabold rounded-full bg-[#24A1DE] text-white shadow-md shadow-sky-500/30 flex items-center justify-center">
                         {unreadCount}
                       </span>
                     )}
