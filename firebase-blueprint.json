@@ -1,0 +1,213 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile with Telegram-like username authentication",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Unique user ID"
+        },
+        "username": {
+          "type": "string",
+          "description": "Unique lowercased username handle",
+          "minLength": 3,
+          "maxLength": 30
+        },
+        "firstName": {
+          "type": "string",
+          "description": "First name of user",
+          "minLength": 1,
+          "maxLength": 50
+        },
+        "lastName": {
+          "type": "string",
+          "description": "Last name of user",
+          "maxLength": 50
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Full display name",
+          "maxLength": 100
+        },
+        "bio": {
+          "type": "string",
+          "description": "Short user bio or status message",
+          "maxLength": 160
+        },
+        "avatarUrl": {
+          "type": "string",
+          "description": "Avatar image URL or svg data string"
+        },
+        "passwordHash": {
+          "type": "string",
+          "description": "SHA-256 hashed password"
+        },
+        "passwordSalt": {
+          "type": "string",
+          "description": "Salt used for password hash"
+        },
+        "status": {
+          "type": "string",
+          "description": "Online presence status",
+          "enum": ["online", "offline"]
+        },
+        "lastSeen": {
+          "type": "string",
+          "description": "ISO timestamp of last activity"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "ISO timestamp of account creation"
+        }
+      },
+      "required": ["userId", "username", "firstName", "passwordHash", "createdAt"]
+    },
+    "UsernameIndex": {
+      "title": "UsernameIndex",
+      "description": "Index of username handles to ensure uniqueness and fast lookup",
+      "type": "object",
+      "properties": {
+        "username": {
+          "type": "string",
+          "description": "Lowercased username"
+        },
+        "userId": {
+          "type": "string",
+          "description": "Associated user ID"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Creation timestamp"
+        }
+      },
+      "required": ["username", "userId"]
+    },
+    "Conversation": {
+      "title": "Conversation",
+      "description": "Chat conversation between users",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Conversation ID"
+        },
+        "participantIds": {
+          "type": "array",
+          "description": "List of user IDs participating in the conversation"
+        },
+        "participants": {
+          "type": "object",
+          "description": "Map of user information for participants"
+        },
+        "lastMessage": {
+          "type": "object",
+          "description": "Preview of the last message sent"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "ISO timestamp of latest update"
+        },
+        "unreadCounts": {
+          "type": "object",
+          "description": "Unread message count per participant"
+        }
+      },
+      "required": ["id", "participantIds", "updatedAt"]
+    },
+    "Message": {
+      "title": "Message",
+      "description": "Direct chat message with rich media and reactions",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Message unique identifier"
+        },
+        "conversationId": {
+          "type": "string",
+          "description": "Conversation ID this message belongs to"
+        },
+        "senderId": {
+          "type": "string",
+          "description": "User ID of sender"
+        },
+        "senderUsername": {
+          "type": "string",
+          "description": "Sender username"
+        },
+        "senderName": {
+          "type": "string",
+          "description": "Sender display name"
+        },
+        "recipientId": {
+          "type": "string",
+          "description": "User ID of recipient"
+        },
+        "text": {
+          "type": "string",
+          "description": "Text body of the message",
+          "maxLength": 4000
+        },
+        "type": {
+          "type": "string",
+          "description": "Type of message",
+          "enum": ["text", "image", "file", "audio", "voice", "sticker"]
+        },
+        "mediaUrl": {
+          "type": "string",
+          "description": "URL or compressed base64 data for media attachment"
+        },
+        "mediaName": {
+          "type": "string",
+          "description": "Original file name of attachment"
+        },
+        "mediaSize": {
+          "type": "string",
+          "description": "Human readable size of attachment"
+        },
+        "mediaType": {
+          "type": "string",
+          "description": "MIME type of attachment"
+        },
+        "timestamp": {
+          "type": "string",
+          "description": "ISO timestamp of the message"
+        },
+        "status": {
+          "type": "string",
+          "description": "Delivery status of message",
+          "enum": ["sent", "delivered", "read"]
+        },
+        "replyTo": {
+          "type": "object",
+          "description": "Quoted message object if replying"
+        },
+        "reactions": {
+          "type": "object",
+          "description": "Map of emoji reactions to array of user IDs"
+        }
+      },
+      "required": ["id", "conversationId", "senderId", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles with username and account details"
+    },
+    "/usernames/{username}": {
+      "schema": "UsernameIndex",
+      "description": "Unique username registry and search indexing"
+    },
+    "/conversations/{conversationId}": {
+      "schema": "Conversation",
+      "description": "Conversation metadata and participants"
+    },
+    "/conversations/{conversationId}/messages/{messageId}": {
+      "schema": "Message",
+      "description": "Real-time messages belonging to a conversation"
+    }
+  }
+}

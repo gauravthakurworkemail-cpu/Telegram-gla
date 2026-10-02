@@ -1,0 +1,6 @@
+{
+  "name": "TeleChat - Real-Time Messenger",
+  "description": "Fast and secure real-time messaging application inspired by Telegram with username authentication, instant search, media sharing, and rich profiles.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

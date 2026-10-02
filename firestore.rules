@@ -1,0 +1,85 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['userId', 'username', 'firstName', 'passwordHash', 'createdAt'])
+        && data.userId is string && data.userId.size() > 0 && data.userId.size() <= 128
+        && data.username is string && data.username.size() >= 3 && data.username.size() <= 30
+        && data.firstName is string && data.firstName.size() >= 1 && data.firstName.size() <= 50
+        && data.passwordHash is string && data.passwordHash.size() >= 32
+        && data.createdAt is string;
+    }
+
+    function isValidUsernameIndex(data) {
+      return data.keys().hasAll(['username', 'userId'])
+        && data.username is string && data.username.size() >= 3 && data.username.size() <= 30
+        && data.userId is string && data.userId.size() > 0 && data.userId.size() <= 128;
+    }
+
+    function isValidConversation(data) {
+      return data.keys().hasAll(['id', 'participantIds', 'updatedAt'])
+        && data.id is string && data.id.size() > 0 && data.id.size() <= 128
+        && data.participantIds is list && data.participantIds.size() >= 1 && data.participantIds.size() <= 100
+        && data.updatedAt is string;
+    }
+
+    function isValidMessage(data) {
+      return data.keys().hasAll(['id', 'conversationId', 'senderId', 'timestamp'])
+        && data.id is string && data.id.size() > 0 && data.id.size() <= 128
+        && data.conversationId is string && data.conversationId.size() > 0 && data.conversationId.size() <= 128
+        && data.senderId is string && data.senderId.size() > 0 && data.senderId.size() <= 128
+        && data.timestamp is string;
+    }
+
+    // Default deny all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // User profiles
+    match /users/{userId} {
+      allow get: if isValidId(userId);
+      allow list: if true;
+      allow create: if isValidId(userId) && isValidUser(incoming()) && incoming().userId == userId;
+      allow update: if isValidId(userId) && isValidUser(incoming()) && incoming().userId == existing().userId;
+      allow delete: if false;
+    }
+
+    // Username registry for instant lookup and uniqueness
+    match /usernames/{username} {
+      allow get, list: if true;
+      allow create: if isValidId(username) && isValidUsernameIndex(incoming()) && incoming().username == username;
+      allow update, delete: if false;
+    }
+
+    // Conversations
+    match /conversations/{conversationId} {
+      allow get: if isValidId(conversationId);
+      allow list: if true;
+      allow create: if isValidId(conversationId) && isValidConversation(incoming()) && incoming().id == conversationId;
+      allow update: if isValidId(conversationId) && isValidConversation(incoming());
+      allow delete: if false;
+
+      // Messages in conversation
+      match /messages/{messageId} {
+        allow get, list: if isValidId(conversationId);
+        allow create: if isValidId(conversationId) && isValidId(messageId) && isValidMessage(incoming()) && incoming().conversationId == conversationId && incoming().id == messageId;
+        allow update: if isValidId(conversationId) && isValidId(messageId) && isValidMessage(incoming()) && incoming().conversationId == existing().conversationId;
+        allow delete: if false;
+      }
+    }
+  }
+}
